@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Country Simulation with Three.js</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #canvas-container {
+            width: 800px;
+            height: 600px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #controls {
+            margin-top: 10px;
+            text-align: center;
+        }
+        #year {
+            font-size: 18px;
+            margin: 10px 0;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #info {
+            width: 800px;
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Country Simulation Visualization</h1>
+    <div id="canvas-container"></div>
+    <div id="controls">
+        <div id="year">Year: 2025</div>
+        <button onclick="advanceYear()">Advance Year</button>
+    </div>
+    <div id="info"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        class Country {
+            constructor(name, population, gdp, governance) {
+                this.name = name;
+                this.population = population; // in millions
+                this.gdp = gdp; // in billion USD
+                this.governance = governance; // 'democracy', 'autocracy', or 'monarchy'
+                this.stability = this.calculateInitialStability();
+                this.mesh = null; // Three.js mesh
+            }
+
+            calculateInitialStability() {
+                const baseStability = 0.7;
+                const modifiers = {
+                    democracy: 0.2,
+                    autocracy: -0.1,
+                    monarchy: 0.1
+                };
+                return Math.min(1, Math.max(0, baseStability + (modifiers[this.governance] || 0)));
+            }
+
+            economicGrowth() {
+                const baseGrowthRate = 0.03;
+                const stabilityImpact = this.stability * 0.02;
+                const governanceImpact = {
+                    democracy: 0.01,
+                    autocracy: -0.005,
+                    monarchy: 0.005
+                }[this.governance] || 0;
+                const growthRate = baseGrowthRate + stabilityImpact + governanceImpact;
+                this.gdp *= (1 + growthRate);
+                this.population *= 1.01;
+            }
+
+            updateStability() {
+                const gdpPerCapita = (this.gdp * 1e9) / (this.population * 1e6);
+                const stabilityChange = (gdpPerCapita > 20000) ? 0.05 : -0.05;
+                this.stability = Math.min(1, Math.max(0, this.stability + stabilityChange * 0.1));
+                if (Math.random() < 0.1) {
+                    this.stability = Math.min(1, Math.max(0, this.stability + (Math.random() - 0.5) * 0.1));
+                }
+            }
+
+            simulateYear() {
+                this.economicGrowth();
+                this.updateStability();
+            }
+
+            getStats() {
+                return `
+                    <div>
+                        <h3>${this.name}</h3>
+                        <p>Population: ${this.population.toFixed(2)} million</p>
+                        <p>GDP: $${this.gdp.toFixed(2)} billion</p>
+                        <p>Governance: ${this.governance}</p>
+                        <p>Stability: ${(this.stability * 100).toFixed(1)}%</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize countries
+        const countries = [
+            new Country("Alphaland", 50, 2000, "democracy"),
+            new Country("Betastan", 30, 800, "autocracy"),
+            new Country("Gammaria", 20, 1200, "monarchy")
+        ];
+
+        // Three.js setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, 800 / 600, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(800, 600);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        camera.position.z = 50;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(0, 1, 1);
+        scene.add(directionalLight);
+
+        // Create country spheres
+        countries.forEach((country, index) => {
+            const geometry = new THREE.SphereGeometry(1, 32, 32);
+            const material = new THREE.MeshPhongMaterial({
+                color: {
+                    democracy: 0x00ff00,
+                    autocracy: 0xff0000,
+                    monarchy: 0x0000ff
+                }[country.governance]
+            });
+            country.mesh = new THREE.Mesh(geometry, material);
+            country.mesh.position.x = (index - 1) * 20; // Spread out horizontally
+            scene.add(country.mesh);
+        });
+
+        // Update display
+        const infoDiv = document.getElementById('info');
+        function updateDisplay() {
+            infoDiv.innerHTML = countries.map(country => country.getStats()).join('');
+            countries.forEach(country => {
+                // Scale sphere size by population (normalized)
+                const scale = Math.max(2, Math.min(10, country.population / 10));
+                country.mesh.scale.set(scale, scale, scale);
+                // Set height based on GDP
+                country.mesh.position.y = country.gdp / 200;
+                // Pulsing effect for stability
+                const pulse = 1 + country.stability * 0.2 * Math.sin(Date.now() * 0.002);
+                country.mesh.scale.multiplyScalar(pulse);
+                setTimeout(() => country.mesh.scale.divideScalar(pulse), 0);
+            });
+        }
+        updateDisplay();
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            // Rotate camera for dynamic view
+            camera.position.x = 50 * Math.sin(Date.now() * 0.0005);
+            camera.position.z = 50 * Math.cos(Date.now() * 0.0005);
+            camera.lookAt(0, 0, 0);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Advance simulation
+        let currentYear = 2025;
+        function advanceYear() {
+            currentYear++;
+            document.getElementById('year').textContent = `Year: ${currentYear}`;
+            countries.forEach(country => country.simulateYear());
+            updateDisplay();
+        }
+    </script>
+</body>
+</html>
